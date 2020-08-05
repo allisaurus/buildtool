@@ -488,7 +488,7 @@ class SpinnakerAgent(service_testing.HttpAgent):
       return None
 
     logger.info('%s is available at %s', name, base_url)
-    env_url = os.path.join(base_url, 'resolvedEnv')
+    env_url = base_url #os.path.join(base_url, 'resolvedEnv')
     headers = {}
     if bearer_auth_token:
       headers['Authorization'] = 'Bearer {}'.format(bearer_auth_token)
