@@ -118,10 +118,13 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       'subnetType': 'public-subnet', # needs to be tagged in target VPC
       'securityGroupNames': [], # required for FARGATE
       'type': 'createServerGroup',
+      'user': 'integration-tests'
       # 'targetGroupMappings': [] - use if load balancer available
       # 'containerMappings': [{}] - use with artifact
     }]
     job[0].update(self.__mig_payload_extra)
+
+    ## Need to validate service existing in ECS w/ observer
 
   def destroy_server_group(self, version):
     serverGroupName = '%s-%s' % (self.__cluster_name, version)
@@ -129,15 +132,13 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       'cloudProvider': 'ecs',
       'serverGroupName': serverGroupName,
       'region': self.TEST_REGION,
-      'zone': self.TEST_ZONE,
       'type': 'destroyServerGroup',
-      'regions': [self.TEST_REGION],
-      'zones': [self.TEST_ZONE],
       'credentials': self.bindings['SPINNAKER_ECS_ACCOUNT'],
       'user': 'integration-tests'
-      # other options
     }]
     job[0].update(self.__mig_payload_extra)
+
+    ## Need to validate service existing in ECS w/ observer
 
 class EcsServerGroupTest(st.AgentTestCase):
   """The test fixture for the EcsServerGroupTest.
