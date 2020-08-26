@@ -14,10 +14,11 @@
 
 """
 Smoke test to see if Spinnaker can interoperate with Amazon ECS.
+Currently a NON-FUNCTIONAL DESIGN AID which aspires to work.
 """
 
 # Standard python modules.
-import sys
+import sys, os
 
 # citest modules.
 import citest.aws_testing as aws
@@ -43,6 +44,26 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
   def new_agent(cls, bindings):
     """Implements citest.service_testing.AgentTestScenario.new_agent."""
     return gate.new_agent(bindings)
+  
+  @classmethod
+  def initArgumentParser(cls, parser, defaults=None):
+    """Initialize command line argument parser.
+
+    Args:
+      parser: argparse.ArgumentParser
+    """
+    super(EcsServerGroupTestScenario, cls).initArgumentParser(
+        parser, defaults=defaults)
+
+    parser.add_argument(
+        '--test_ecs_artifact_account',
+        default='ecs-artifact-account',
+        help='Spinnaker ECS artifact account name to use for test operations'
+             ' against artifacts stored in S3.')
+
+    parser.add_argument(
+        '--test_ecs_bucket',
+        help='S3 bucket to upload & read task defintions from.')
 
   def __init__(self, bindings, agent=None):
     """Constructor.
@@ -54,9 +75,8 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     super(EcsServerGroupTestScenario, self).__init__(bindings, agent)
     bindings = self.bindings
 
-    aws_observer = self.aws_observer # do we need to point this at a diff profile than AWS?
+    aws_observer = self.aws_observer # TODO: specific additional permissions for profile
     self.ecs_client = aws_observer.make_boto_client('ecs')  
-    # self.elb_client = aws_observer.make_boto_client('elb') - maybe?
 
     # We'll call out the app name because it is widely used
     # because it scopes the context of our activities.
@@ -66,7 +86,6 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
 
   def create_app(self):
     """Creates OperationContract that creates a new Spinnaker Application."""
-    print("\n ------- ASTEST| ecs_smoke_test create_app() ")
     contract = jc.Contract()
     return st.OperationContract(
         self.agent.make_create_app_operation(
@@ -84,7 +103,16 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
             account_name=self.bindings['SPINNAKER_ECS_ACCOUNT']),
         contract=contract)
 
+  def __s3_file_expected_artifact(self):
+    # upload file to s3
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    # TODO: upload JSON file stored in this repo, return artifact values
+
+
   def create_server_group(self):
+    # TODO: can we create SG with in-line artifact,
+    # or do we need to save a pipeline w/ an expected artifact?
+    values_expected_artifact = self.__s3_file_expected_artifact('ECS_ARTIFACT')
     job = [{
       'account': self.bindings['SPINNAKER_ECS_ACCOUNT'],
       'application': self.TEST_APP,
@@ -105,9 +133,8 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       'targetSize': 1,
       'computeUnits': 256,
       'healthCheckType': 'EC2',
-      'containerPort': 80, # omit with artifact
       'iamRole': self.ECS_EXECUTION_ROLE, # required to use ECR
-      'imageDescription': { # omit with artifact
+      'imageDescription': { # for reference; use w/ 'containerMappings'
         'account': "SPINNAKER_ECR_REGISTRY_ACCOUNT",
         "imageId": "SPINNAKER_ECR_REGISTRY/spinnaker-deployment-images:nginx",
         "registry": "SPINNAKER_ECR_REGISTRY",
@@ -118,13 +145,22 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       'subnetType': 'public-subnet', # needs to be tagged in target VPC
       'securityGroupNames': [], # required for FARGATE
       'type': 'createServerGroup',
-      'user': 'integration-tests'
-      # 'targetGroupMappings': [] - use if load balancer available
-      # 'containerMappings': [{}] - use with artifact
+      'user': 'integration-tests',
+      'useTaskDefinitionArtifact': 'true',
+      'targetGroupMappings': [{ 
+        'containerName': 'test', # should match containerName in task def artifact
+        'containerPort': 80,
+        'targetGroup': 'test-targetgroup-name' # should match LB in account 
+      }],
+      'taskDefinitionArtifact': {
+        'artifactId': values_expected_artifact 
+      },
+      'taskDefinitionArtifactAccount': 'SPINNAKER_ECS_ARTIFACT_ACCOUNT',
+      'containerMappings': [{}] # map container name to image
     }]
     job[0].update(self.__mig_payload_extra)
 
-    ## Need to validate service existing in ECS w/ observer
+    ## TODO: validate service existing in ECS w/ observer
 
   def destroy_server_group(self, version):
     serverGroupName = '%s-%s' % (self.__cluster_name, version)
@@ -138,7 +174,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     }]
     job[0].update(self.__mig_payload_extra)
 
-    ## Need to validate service existing in ECS w/ observer
+    ## TODO: validate service existing in ECS w/ observer
 
 class EcsServerGroupTest(st.AgentTestCase):
   """The test fixture for the EcsServerGroupTest.
@@ -159,7 +195,11 @@ class EcsServerGroupTest(st.AgentTestCase):
   def test_b_create_server_group(self):
     self.run_test_case(self.scenario.create_server_group())
 
-  #def test_b1_resize_server_group(self):...
+  #def test_c_resize_server_group(self):...
+
+  #def test_d_clone_server_group(self):...
+
+  #def test_e_disable_server_group(self):
 
   def test_c_destroy_server_group(self):
     self.run_test_case(self.scenario.destroy_server_group('v000'), 
@@ -176,7 +216,7 @@ def main():
   """Implements the main method running this ecs test."""
 
   defaults = {
-      'TEST_STACK': 'ecstest', # can be better?
+      'TEST_STACK': 'ecstest',
       'TEST_APP': 'smoketest' + EcsServerGroupTestScenario.DEFAULT_TEST_ID
   }
 
