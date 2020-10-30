@@ -76,13 +76,16 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     bindings = self.bindings
 
     aws_observer = self.aws_observer # TODO: specific additional permissions for profile
-    self.ecs_client = aws_observer.make_boto_client('ecs')  
+    self.ecs_client = aws_observer.make_boto_client('ecs')
 
     # We'll call out the app name because it is widely used
     # because it scopes the context of our activities.
     # pylint: disable=invalid-name
     self.TEST_APP = bindings['TEST_APP']
-    self.ECS_CLUSTER = 'TEST_ECS_CLUSTER'  # not sure if needed here
+    # test values TBD configured w/ HAL
+    self.ECS_CLUSTER = "spinnaker-deployment-cluster"
+    self.ECS_TEST_ACCT = "ecs-my-aws-devel-acct"  # self.bindings['SPINNAKER_ECS_ACCOUNT']
+    self.TEST_REGION = "ca-central-1"
 
   def create_app(self):
     """Creates OperationContract that creates a new Spinnaker Application."""
@@ -90,7 +93,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     return st.OperationContract(
         self.agent.make_create_app_operation(
             bindings=self.bindings, application=self.TEST_APP,
-            account_name=self.bindings['SPINNAKER_ECS_ACCOUNT'],
+            account_name=self.ECS_TEST_ACCT,
             cloud_providers="aws,ecs"),
         contract=contract)
     
@@ -100,7 +103,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     return st.OperationContract(
         self.agent.make_delete_app_operation(
             application=self.TEST_APP,
-            account_name=self.bindings['SPINNAKER_ECS_ACCOUNT']),
+            account_name=self.ECS_TEST_ACCT),
         contract=contract)
 
   def __s3_file_expected_artifact(self):
@@ -112,69 +115,121 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
   def create_server_group(self):
     # TODO: can we create SG with in-line artifact,
     # or do we need to save a pipeline w/ an expected artifact?
-    values_expected_artifact = self.__s3_file_expected_artifact('ECS_ARTIFACT')
+
     job = [{
-      'account': self.bindings['SPINNAKER_ECS_ACCOUNT'],
+      'account': self.ECS_TEST_ACCT, # self.bindings['SPINNAKER_ECS_ACCOUNT'],
       'application': self.TEST_APP,
       'availabilityZones': {
-        self.TEST_REGION: [self.TEST_ZONE]
+        self.TEST_REGION : [self.TEST_REGION + 'a', self.TEST_REGION + 'b']
       },
+      'associatePublicIpAddress': 'true',
       'capacity': {
         'min': 1,
-        'max': 1,
+        'max': 2,
         'desired': 1
       },
       'cloudProvider': 'ecs',
-      'ecsClusterName': self.ECS_CLUSTER,
-      'stack': self.TEST_STACK,
-      'credentials': self.bindings['SPINNAKER_ECS_ACCOUNT'],
+      'ecsClusterName': self.ECS_CLUSTER, #'spinnaker-deployment-cluster',
+      'stack': 'ecstest', #self.TEST_STACK,
+      'credentials': self.ECS_TEST_ACCT, #self.bindings['SPINNAKER_ECS_ACCOUNT'],
       'launchType': 'FARGATE',
       'networkMode': 'awsvpc',
       'targetSize': 1,
       'computeUnits': 256,
       'healthCheckType': 'EC2',
-      'iamRole': self.ECS_EXECUTION_ROLE, # required to use ECR
       'imageDescription': { # for reference; use w/ 'containerMappings'
-        'account': "SPINNAKER_ECR_REGISTRY_ACCOUNT",
-        "imageId": "SPINNAKER_ECR_REGISTRY/spinnaker-deployment-images:nginx",
-        "registry": "SPINNAKER_ECR_REGISTRY",
-        "repository": "SPINNAKER_DOCKER_REPO",
-        "tag": "TAG"
+        'account': "my-ca-central-1-devel-registry",
+        "imageId": "679273379347.dkr.ecr.ca-central-1.amazonaws.com/nyancat:latest",
+        "registry": "https://679273379347.dkr.ecr.ca-central-1.amazonaws.com",
+        "repository": "https://679273379347.dkr.ecr.ca-central-1.amazonaws.com/nyancat",
+        "tag": "latest"
       },
       'reservedMemory': 512,
       'subnetType': 'public-subnet', # needs to be tagged in target VPC
-      'securityGroupNames': [], # required for FARGATE
+      'securityGroupNames': ['spinnaker-ecs-demo-public-access','spinnaker-ecs-demo-private-access'],
       'type': 'createServerGroup',
       'user': 'integration-tests',
-      'useTaskDefinitionArtifact': 'true',
       'targetGroupMappings': [{ 
-        'containerName': 'test', # should match containerName in task def artifact
+        #'containerName': 'test', # should match containerName in task def artifact
         'containerPort': 80,
-        'targetGroup': 'test-targetgroup-name' # should match LB in account 
+        'targetGroup': 'hello-nlb-1' 
       }],
-      'taskDefinitionArtifact': {
-        'artifactId': values_expected_artifact 
-      },
-      'taskDefinitionArtifactAccount': 'SPINNAKER_ECS_ARTIFACT_ACCOUNT',
-      'containerMappings': [{}] # map container name to image
+      'placementStrategySequence': []
+      #'iamRole': 'SpinnakerManagedCA', # required to use ECR
+      #'useTaskDefinitionArtifact': 'false',
+      #'taskDefinitionArtifact': {'artifactId': values_expected_artifact },
+      #'taskDefinitionArtifactAccount': 'SPINNAKER_ECS_ARTIFACT_ACCOUNT',
+      #'containerMappings': [{}] # map container name to image
     }]
-    job[0].update(self.__mig_payload_extra)
 
-    ## TODO: validate service existing in ECS w/ observer
+    payload = self.agent.make_json_payload_from_kwargs(
+      job=job,
+      application=self.TEST_APP,
+      description='Create Server Group in ' + self.TEST_APP + '-ecstest-v000')
+    
+    builder = aws.AwsPythonContractBuilder(self.aws_observer)
+    (builder.new_clause_builder('ECS service created',
+                                retryable_for_secs=200)
+     .call_method(
+         self.ecs_client.describe_services,
+         services=[self.TEST_APP + '-ecstest-v000'],cluster='spinnaker-deployment-cluster')
+     .EXPECT(
+         ov_factory.value_list_path_contains(
+             'services',
+             jp.LIST_MATCHES([jp.DICT_MATCHES({'serviceName': jp.STR_EQ(self.TEST_APP + '-ecstest-v000')})]))
+     ))
+
+    print("\n ---- ASTEST| CSG payload...")
+    print(payload)
+
+    return st.OperationContract(
+        self.new_post_operation(
+            title='create_server_group', data=payload, path='tasks'),
+        contract=builder.build())
 
   def destroy_server_group(self, version):
-    serverGroupName = '%s-%s' % (self.__cluster_name, version)
+    serverGroupName = self.TEST_APP + '-ecstest-v000' #'%s-%s' % (self.__cluster_name, version)
     job = [{
       'cloudProvider': 'ecs',
       'serverGroupName': serverGroupName,
       'region': self.TEST_REGION,
       'type': 'destroyServerGroup',
-      'credentials': self.bindings['SPINNAKER_ECS_ACCOUNT'],
+      'credentials': self.ECS_TEST_ACCT, #self.bindings['SPINNAKER_ECS_ACCOUNT'],
       'user': 'integration-tests'
     }]
-    job[0].update(self.__mig_payload_extra)
+    
+    payload = self.agent.make_json_payload_from_kwargs(
+      job=job,
+      application=self.TEST_APP,
+      description='DestroyServerGroup: ' + serverGroupName)
 
-    ## TODO: validate service existing in ECS w/ observer
+    print("\n ---- ASTEST| DSG payload...")
+    print(payload)
+
+    builder = aws.AwsPythonContractBuilder(self.aws_observer)
+    # maybe also look for 'failures':{'reason':'MISSING'} ?
+    (builder.new_clause_builder('ECS service deleted',
+                                retryable_for_secs=600)
+     .call_method(
+         self.ecs_client.describe_services,
+         services=[self.TEST_APP + '-ecstest-v000'],cluster='spinnaker-deployment-cluster')
+     .EXPECT(
+         ov_factory.value_list_path_contains(
+             'services',
+             jp.LIST_MATCHES([
+               jp.DICT_MATCHES({'status': jp.STR_SUBSTR('INACTIVE')})])))
+     .OR(
+        ov_factory.value_list_path_contains(
+            'services',
+            jp.LIST_MATCHES([
+              jp.DICT_MATCHES({'status': jp.STR_SUBSTR('inactive')})])))
+     )
+
+
+    return st.OperationContract(
+        self.new_post_operation(
+            title='delete_server_group', data=payload, path='tasks'),
+        contract=builder.build())
 
 class EcsServerGroupTest(st.AgentTestCase):
   """The test fixture for the EcsServerGroupTest.
@@ -217,7 +272,7 @@ def main():
 
   defaults = {
       'TEST_STACK': 'ecstest',
-      'TEST_APP': 'smoketest' + EcsServerGroupTestScenario.DEFAULT_TEST_ID
+      'TEST_APP': 'smoketestECS' + EcsServerGroupTestScenario.DEFAULT_TEST_ID
   }
 
   return citest.base.TestRunner.main(
