@@ -122,7 +122,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       'availabilityZones': {
         self.TEST_REGION : [self.TEST_REGION + 'a', self.TEST_REGION + 'b']
       },
-      'associatePublicIpAddress': 'true',
+      #'associatePublicIpAddress': 'true',
       'capacity': {
         'min': 1,
         'max': 2,
@@ -145,7 +145,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
         "tag": "latest"
       },
       'reservedMemory': 512,
-      'subnetType': 'public-subnet', # needs to be tagged in target VPC
+      'subnetType': 'private-subnet', # needs to be tagged in target VPC
       'securityGroupNames': ['spinnaker-ecs-demo-public-access','spinnaker-ecs-demo-private-access'],
       'type': 'createServerGroup',
       'user': 'integration-tests',
