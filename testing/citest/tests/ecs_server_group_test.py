@@ -124,7 +124,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       },
       #'associatePublicIpAddress': 'true',
       'capacity': {
-        'min': 1,
+        'min': 0,
         'max': 2,
         'desired': 1
       },
@@ -187,6 +187,91 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
             title='create_server_group', data=payload, path='tasks'),
         contract=builder.build())
 
+  def resize_server_group(self):
+    serverGroupName = self.TEST_APP + '-ecstest-v000'
+    job = [{
+      'cloudProvider': 'ecs',
+      'serverGroupName': serverGroupName,
+      'region': self.TEST_REGION,
+      'type': 'resizeServerGroup',
+      'stack': 'ecstest',
+      'capacity': {
+        'min': 0,
+        'max': 2,
+        'desired': 2
+      },
+      'type': 'resizeServerGroup',
+      'credentials': self.ECS_TEST_ACCT, #self.bindings['SPINNAKER_ECS_ACCOUNT'],
+      'user': 'integration-tests'
+    }]
+
+    payload = self.agent.make_json_payload_from_kwargs(
+      job=job,
+      application=self.TEST_APP,
+      description='ResizeServerGroup: ' + serverGroupName)
+
+    print("\n ---- ASTEST| Resize SG payload...")
+    print(payload)
+
+    builder = aws.AwsPythonContractBuilder(self.aws_observer)
+    # find named service w/ running count = 2
+    (builder.new_clause_builder('ECS service scaled up',
+                                retryable_for_secs=400)
+     .call_method(
+         self.ecs_client.describe_services,
+         services=[self.TEST_APP + '-ecstest-v000'],cluster='spinnaker-deployment-cluster')
+     .EXPECT(
+         ov_factory.value_list_path_contains(
+             'services',
+             jp.LIST_MATCHES([
+               jp.DICT_MATCHES({'runningCount': jp.NUM_EQ(2)})])))
+      )
+
+    return st.OperationContract(
+        self.new_post_operation(
+            title='resize_server_group', data=payload, path='tasks'),
+        contract=builder.build())
+
+
+  def disable_server_group(self):
+    serverGroupName = self.TEST_APP + '-ecstest-v000' #'%s-%s' % (self.__cluster_name, version)
+    job = [{
+      'cloudProvider': 'ecs',
+      'serverGroupName': serverGroupName,
+      'region': self.TEST_REGION,
+      'type': 'disableServerGroup',
+      'credentials': self.ECS_TEST_ACCT, #self.bindings['SPINNAKER_ECS_ACCOUNT'],
+      'user': 'integration-tests'
+    }]
+
+    payload = self.agent.make_json_payload_from_kwargs(
+      job=job,
+      application=self.TEST_APP,
+      description='DisableServerGroup: ' + serverGroupName)
+
+    print("\n ---- ASTEST| Disable SG payload...")
+    print(payload)
+
+    builder = aws.AwsPythonContractBuilder(self.aws_observer)
+    # look for 'running' = 0
+    (builder.new_clause_builder('ECS service scaled to 0',
+                                retryable_for_secs=600)
+     .call_method(
+         self.ecs_client.describe_services,
+         services=[self.TEST_APP + '-ecstest-v000'],cluster='spinnaker-deployment-cluster')
+     .EXPECT(
+         ov_factory.value_list_path_contains(
+             'services',
+             jp.LIST_MATCHES([
+               jp.DICT_MATCHES({'runningCount': jp.NUM_EQ(0)})])))
+      )
+
+    return st.OperationContract(
+        self.new_post_operation(
+            title='disable_server_group', data=payload, path='tasks'),
+        contract=builder.build())
+
+
   def destroy_server_group(self, version):
     serverGroupName = self.TEST_APP + '-ecstest-v000' #'%s-%s' % (self.__cluster_name, version)
     job = [{
@@ -225,7 +310,6 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
               jp.DICT_MATCHES({'status': jp.STR_SUBSTR('inactive')})])))
      )
 
-
     return st.OperationContract(
         self.new_post_operation(
             title='delete_server_group', data=payload, path='tasks'),
@@ -250,14 +334,16 @@ class EcsServerGroupTest(st.AgentTestCase):
   def test_b_create_server_group(self):
     self.run_test_case(self.scenario.create_server_group())
 
-  #def test_c_resize_server_group(self):...
+  def test_c_resize_server_group(self):
+    self.run_test_case(self.scenario.resize_server_group())
 
-  #def test_d_clone_server_group(self):...
+  #def test_d_clone_server_group(self):... ?
 
-  #def test_e_disable_server_group(self):
+  def test_d_disable_server_group(self):
+    self.run_test_case(self.scenario.disable_server_group())
 
-  def test_c_destroy_server_group(self):
-    self.run_test_case(self.scenario.destroy_server_group('v000'), 
+  def test_e_destroy_server_group(self):
+    self.run_test_case(self.scenario.destroy_server_group('v000'),
                       poll_every_secs=5)
 
   def test_z_delete_app(self):
