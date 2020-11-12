@@ -14,7 +14,6 @@
 
 """
 Smoke test to see if Spinnaker can interoperate with Amazon ECS.
-Currently a NON-FUNCTIONAL DESIGN AID which aspires to work.
 """
 
 # Standard python modules.
@@ -54,6 +53,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     """
     super(EcsServerGroupTestScenario, cls).initArgumentParser(
         parser, defaults=defaults)
+    #TODO: use custom args for artifact values
 
     parser.add_argument(
         '--test_ecs_artifact_account',
@@ -82,11 +82,27 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     # because it scopes the context of our activities.
     # pylint: disable=invalid-name
     self.TEST_APP = bindings['TEST_APP']
-    # test values TBD configured w/ HAL
+    self.TEST_STACK = bindings['TEST_STACK']
+    self.SERVER_GROUP_NAME = self.TEST_APP + '-' + self.TEST_STACK + '-v000'
     self.ECS_CLUSTER = "spinnaker-deployment-cluster"
+    
+    # test values. TODO: configure accounts w/ Halyard
     self.ECS_TEST_ACCT = "ecs-my-aws-devel-acct"  # self.bindings['SPINNAKER_ECS_ACCOUNT']
-    self.TEST_REGION = "ca-central-1"
+    self.TEST_REGION = "ca-central-1" # self.bindings['TEST_AWS_REGION']
+    self.TEST_TARGET_GROUP = 'hello-nlb-1'
+    self.ECR_ACCOUNT_NAME = "my-ca-central-1-devel-registry"
+    self.ECR_URI = '679273379347.dkr.ecr.ca-central-1.amazonaws.com'
+    self.ECR_REGISTRY = "https://" + self.ECR_URI
+    self.ECR_REPOSITORY = "https://" + self.ECR_URI + "/nyancat"
+    self.ECR_IMAGE_ID = self.ECR_URI + "/nyancat:latest"
 
+  
+  def __s3_file_expected_artifact(self):
+    # upload file to s3
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    # TODO: upload JSON file stored in this repo, return artifact values
+  
+  
   def create_app(self):
     """Creates OperationContract that creates a new Spinnaker Application."""
     contract = jc.Contract()
@@ -97,6 +113,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
             cloud_providers="aws,ecs"),
         contract=contract)
     
+  
   def delete_app(self):
     """Creates OperationContract that deletes a new Spinnaker Application."""
     contract = jc.Contract()
@@ -106,42 +123,36 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
             account_name=self.ECS_TEST_ACCT),
         contract=contract)
 
-  def __s3_file_expected_artifact(self):
-    # upload file to s3
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    # TODO: upload JSON file stored in this repo, return artifact values
-
 
   def create_server_group(self):
     # TODO: can we create SG with in-line artifact,
     # or do we need to save a pipeline w/ an expected artifact?
 
     job = [{
-      'account': self.ECS_TEST_ACCT, # self.bindings['SPINNAKER_ECS_ACCOUNT'],
+      'account': self.ECS_TEST_ACCT,
       'application': self.TEST_APP,
       'availabilityZones': {
         self.TEST_REGION : [self.TEST_REGION + 'a', self.TEST_REGION + 'b']
       },
-      #'associatePublicIpAddress': 'true',
       'capacity': {
-        'min': 0,
+        'min': 1,
         'max': 2,
         'desired': 1
       },
       'cloudProvider': 'ecs',
-      'ecsClusterName': self.ECS_CLUSTER, #'spinnaker-deployment-cluster',
-      'stack': 'ecstest', #self.TEST_STACK,
-      'credentials': self.ECS_TEST_ACCT, #self.bindings['SPINNAKER_ECS_ACCOUNT'],
+      'ecsClusterName': self.ECS_CLUSTER,
+      'stack': self.TEST_STACK,
+      'credentials': self.ECS_TEST_ACCT,
       'launchType': 'FARGATE',
       'networkMode': 'awsvpc',
       'targetSize': 1,
       'computeUnits': 256,
       'healthCheckType': 'EC2',
-      'imageDescription': { # for reference; use w/ 'containerMappings'
-        'account': "my-ca-central-1-devel-registry",
-        "imageId": "679273379347.dkr.ecr.ca-central-1.amazonaws.com/nyancat:latest",
-        "registry": "https://679273379347.dkr.ecr.ca-central-1.amazonaws.com",
-        "repository": "https://679273379347.dkr.ecr.ca-central-1.amazonaws.com/nyancat",
+      'imageDescription': {
+        'account': self.ECR_ACCOUNT_NAME,
+        "imageId": self.ECR_IMAGE_ID,
+        "registry": self.ECR_REGISTRY,
+        "repository": self.ECR_REPOSITORY,
         "tag": "latest"
       },
       'reservedMemory': 512,
@@ -152,7 +163,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       'targetGroupMappings': [{ 
         #'containerName': 'test', # should match containerName in task def artifact
         'containerPort': 80,
-        'targetGroup': 'hello-nlb-1' 
+        'targetGroup': self.TEST_TARGET_GROUP 
       }],
       'placementStrategySequence': []
       #'iamRole': 'SpinnakerManagedCA', # required to use ECR
@@ -165,14 +176,14 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     payload = self.agent.make_json_payload_from_kwargs(
       job=job,
       application=self.TEST_APP,
-      description='Create Server Group in ' + self.TEST_APP + '-ecstest-v000')
+      description='Create Server Group in ' + self.SERVER_GROUP_NAME)
     
     builder = aws.AwsPythonContractBuilder(self.aws_observer)
     (builder.new_clause_builder('ECS service created',
                                 retryable_for_secs=200)
      .call_method(
          self.ecs_client.describe_services,
-         services=[self.TEST_APP + '-ecstest-v000'],cluster='spinnaker-deployment-cluster')
+         services=[self.SERVER_GROUP_NAME],cluster='spinnaker-deployment-cluster')
      .EXPECT(
          ov_factory.value_list_path_contains(
              'services',
@@ -188,27 +199,26 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
         contract=builder.build())
 
   def resize_server_group(self):
-    serverGroupName = self.TEST_APP + '-ecstest-v000'
+    #serverGroupName = self.TEST_APP + '-ecstest-v000'
     job = [{
       'cloudProvider': 'ecs',
-      'serverGroupName': serverGroupName,
+      'serverGroupName': self.SERVER_GROUP_NAME,
       'region': self.TEST_REGION,
       'type': 'resizeServerGroup',
-      'stack': 'ecstest',
+      'stack': self.TEST_STACK,
       'capacity': {
         'min': 0,
         'max': 2,
         'desired': 2
       },
-      'type': 'resizeServerGroup',
-      'credentials': self.ECS_TEST_ACCT, #self.bindings['SPINNAKER_ECS_ACCOUNT'],
+      'credentials': self.ECS_TEST_ACCT,
       'user': 'integration-tests'
     }]
 
     payload = self.agent.make_json_payload_from_kwargs(
       job=job,
       application=self.TEST_APP,
-      description='ResizeServerGroup: ' + serverGroupName)
+      description='ResizeServerGroup: ' + self.SERVER_GROUP_NAME)
 
     print("\n ---- ASTEST| Resize SG payload...")
     print(payload)
@@ -219,7 +229,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
                                 retryable_for_secs=400)
      .call_method(
          self.ecs_client.describe_services,
-         services=[self.TEST_APP + '-ecstest-v000'],cluster='spinnaker-deployment-cluster')
+         services=[self.SERVER_GROUP_NAME],cluster='spinnaker-deployment-cluster')
      .EXPECT(
          ov_factory.value_list_path_contains(
              'services',
@@ -234,10 +244,10 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
 
 
   def disable_server_group(self):
-    serverGroupName = self.TEST_APP + '-ecstest-v000' #'%s-%s' % (self.__cluster_name, version)
+    #serverGroupName = self.TEST_APP + '-ecstest-v000' #'%s-%s' % (self.__cluster_name, version)
     job = [{
       'cloudProvider': 'ecs',
-      'serverGroupName': serverGroupName,
+      'serverGroupName': self.SERVER_GROUP_NAME,
       'region': self.TEST_REGION,
       'type': 'disableServerGroup',
       'credentials': self.ECS_TEST_ACCT, #self.bindings['SPINNAKER_ECS_ACCOUNT'],
@@ -247,7 +257,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     payload = self.agent.make_json_payload_from_kwargs(
       job=job,
       application=self.TEST_APP,
-      description='DisableServerGroup: ' + serverGroupName)
+      description='DisableServerGroup: ' + self.SERVER_GROUP_NAME)
 
     print("\n ---- ASTEST| Disable SG payload...")
     print(payload)
@@ -258,7 +268,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
                                 retryable_for_secs=600)
      .call_method(
          self.ecs_client.describe_services,
-         services=[self.TEST_APP + '-ecstest-v000'],cluster='spinnaker-deployment-cluster')
+         services=[self.SERVER_GROUP_NAME],cluster='spinnaker-deployment-cluster')
      .EXPECT(
          ov_factory.value_list_path_contains(
              'services',
@@ -272,11 +282,11 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
         contract=builder.build())
 
 
-  def destroy_server_group(self, version):
-    serverGroupName = self.TEST_APP + '-ecstest-v000' #'%s-%s' % (self.__cluster_name, version)
+  def destroy_server_group(self):
+    #serverGroupName = self.TEST_APP + '-ecstest-v000' #'%s-%s' % (self.__cluster_name, version)
     job = [{
       'cloudProvider': 'ecs',
-      'serverGroupName': serverGroupName,
+      'serverGroupName': self.SERVER_GROUP_NAME,
       'region': self.TEST_REGION,
       'type': 'destroyServerGroup',
       'credentials': self.ECS_TEST_ACCT, #self.bindings['SPINNAKER_ECS_ACCOUNT'],
@@ -286,7 +296,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     payload = self.agent.make_json_payload_from_kwargs(
       job=job,
       application=self.TEST_APP,
-      description='DestroyServerGroup: ' + serverGroupName)
+      description='DestroyServerGroup: ' + self.SERVER_GROUP_NAME)
 
     print("\n ---- ASTEST| DSG payload...")
     print(payload)
@@ -297,7 +307,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
                                 retryable_for_secs=600)
      .call_method(
          self.ecs_client.describe_services,
-         services=[self.TEST_APP + '-ecstest-v000'],cluster='spinnaker-deployment-cluster')
+         services=[self.SERVER_GROUP_NAME],cluster='spinnaker-deployment-cluster')
      .EXPECT(
          ov_factory.value_list_path_contains(
              'services',
@@ -343,7 +353,7 @@ class EcsServerGroupTest(st.AgentTestCase):
     self.run_test_case(self.scenario.disable_server_group())
 
   def test_e_destroy_server_group(self):
-    self.run_test_case(self.scenario.destroy_server_group('v000'),
+    self.run_test_case(self.scenario.destroy_server_group(),
                       poll_every_secs=5)
 
   def test_z_delete_app(self):
