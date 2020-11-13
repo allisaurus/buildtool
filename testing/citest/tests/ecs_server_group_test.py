@@ -14,6 +14,40 @@
 
 """
 Smoke test to see if Spinnaker can interoperate with Amazon ECS.
+
+-----------------------
+HOW TO RUN THIS TEST LOCALLY (takes: ~15 min)
+
+prereqs:
+* have a Spinnaker dev instance set up
+* have the "spinnaker-ecs-devel" cluster/LB resources created in your account
+* have this repo cloned to your machine
+* set up a python virtualenv & install dependencies per the README.md
+
+1. update the 'test values' in `EcsServerGroupTestScenario` __init__ to match your account
+
+2. open an SSH tunnel to your Spinnaker instance, forwaring ports to `localhost`:
+```
+ssh -A -L 8084:localhost:8084 -L 8087:localhost:8087 ubuntu@[SPIN_INSTANCE_DNS] -i [SSH_KEY]
+```
+
+3. from within `buildtool/testing/citest`, run (for bash):
+```
+PYTHONPATH=.:spinnaker_testing python \
+      tests/ecs_server_group_test.py \
+      --native_host=localhost \
+      --aws_profile=$PROFILE \
+      -test_aws_region=$AWS_REGION
+```
+or... (POWERSHEll):
+```
+$env:PYTHONPATH = ".;spinnaker_testing"; python tests/ecs_server_group_test.py `
+  --native_host=localhost `
+  --aws_profile=$env:AWS_PROFILE `
+  --test_aws_region=$env:AWS_REGION
+```
+
+4. wait 10-15 min for test to complete
 """
 
 # Standard python modules.
@@ -92,6 +126,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     self.TEST_TARGET_GROUP = 'hello-nlb-1'
     self.ECR_ACCOUNT_NAME = "my-ca-central-1-devel-registry"
     self.ECR_URI = '679273379347.dkr.ecr.ca-central-1.amazonaws.com'
+
     self.ECR_REGISTRY = "https://" + self.ECR_URI
     self.ECR_REPOSITORY = "https://" + self.ECR_URI + "/nyancat"
     self.ECR_IMAGE_ID = self.ECR_URI + "/nyancat:latest"

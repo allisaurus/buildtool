@@ -14,11 +14,22 @@ $env:PYTHONPATH = ".;spinnaker_testing"; python tests/ecs_server_group_test.py -
 
 ### TODOs
 
+p1
 [x] get test to run create/delete app
 [x] get test to create/delete SG w/ inputs, w/o load balancing
-[ ] get test to scale SG
-[ ] get test to create/delete SG w/ inputs + load balancing
-[ ] get test to create/delete SG w/ hardcoded artifact + load balancing
+[x] get test to resize SG
+[x] get test to disable SG
+[x] parameterize inputs
+[ ] use (hardcoded) artifact for task def
+[ ] script HAL config setup
+[ ] artifact upload steps
+
+p2
+[ ] use load balancer health checks
+[ ] script configuration
+[ ] refactor names / setup
+[ ] could look for DRAINING on destroy SG?
+[ ] deep dive 'destroy' delay
 
 
 
