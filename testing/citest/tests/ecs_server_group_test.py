@@ -121,15 +121,15 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     self.ECS_CLUSTER = "spinnaker-deployment-cluster"
     
     # test values. TODO: configure accounts w/ Halyard
-    self.ECS_TEST_ACCT = "ecs-my-aws-devel-acct"  # self.bindings['SPINNAKER_ECS_ACCOUNT']
+    self.ECS_TEST_ACCT = "ecs-my-aws-devel-acct"  # self.bindings['SPINNAKER_ECS_ACCOUNT'] - CHANGE
     self.TEST_REGION = "ca-central-1" # self.bindings['TEST_AWS_REGION']
-    self.TEST_TARGET_GROUP = 'hello-nlb-1'
-    self.ECR_ACCOUNT_NAME = "my-ca-central-1-devel-registry"
-    self.ECR_URI = '679273379347.dkr.ecr.ca-central-1.amazonaws.com'
+    self.TEST_TARGET_GROUP = 'Spinnaker-lbs-tg'
+    self.ECR_ACCOUNT_NAME = "my-ca-central-1-devel-registry" # CHANGE
+    self.ECR_URI = '451685053503.dkr.ecr.ca-central-1.amazonaws.com'
 
     self.ECR_REGISTRY = "https://" + self.ECR_URI
-    self.ECR_REPOSITORY = "https://" + self.ECR_URI + "/nyancat"
-    self.ECR_IMAGE_ID = self.ECR_URI + "/nyancat:latest"
+    self.ECR_REPOSITORY = "https://" + self.ECR_URI + "/spinnaker-deployment-images"
+    self.ECR_IMAGE_ID = self.ECR_URI + "/spinnaker-deployment-images:nyancat"
 
   
   def __s3_file_expected_artifact(self):
@@ -192,7 +192,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       },
       'reservedMemory': 512,
       'subnetType': 'private-subnet', # needs to be tagged in target VPC
-      'securityGroupNames': ['spinnaker-ecs-demo-public-access','spinnaker-ecs-demo-private-access'],
+      'securityGroupNames': ['Spinnaker-lbs-ecs-test-security-group','Spinnaker-lbs-e2e-test'],
       'type': 'createServerGroup',
       'user': 'integration-tests',
       'targetGroupMappings': [{ 
