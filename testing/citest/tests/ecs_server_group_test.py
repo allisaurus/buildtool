@@ -16,7 +16,7 @@
 Smoke test to see if Spinnaker can interoperate with Amazon ECS.
 
 -----------------------
-HOW TO RUN THIS TEST LOCALLY (takes: ~15 min)
+HOW TO RUN THIS TEST LOCALLY (running test takes: ~15 min)
 
 prereqs:
 * have a Spinnaker dev instance set up
@@ -121,10 +121,10 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     self.ECS_CLUSTER = "spinnaker-deployment-cluster"
     
     # test values. TODO: configure accounts w/ Halyard
-    self.ECS_TEST_ACCT = "ecs-my-aws-devel-acct"  # self.bindings['SPINNAKER_ECS_ACCOUNT'] - CHANGE
+    self.ECS_TEST_ACCT = "ecs-e2e-test-acct"  # self.bindings['SPINNAKER_ECS_ACCOUNT']
     self.TEST_REGION = "ca-central-1" # self.bindings['TEST_AWS_REGION']
     self.TEST_TARGET_GROUP = 'Spinnaker-lbs-tg'
-    self.ECR_ACCOUNT_NAME = "my-ca-central-1-devel-registry" # CHANGE
+    self.ECR_ACCOUNT_NAME = "e2e-ecr-repo"
     self.ECR_URI = '451685053503.dkr.ecr.ca-central-1.amazonaws.com'
 
     self.ECR_REGISTRY = "https://" + self.ECR_URI
@@ -192,7 +192,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       },
       'reservedMemory': 512,
       'subnetType': 'private-subnet', # needs to be tagged in target VPC
-      'securityGroupNames': ['Spinnaker-lbs-ecs-test-security-group','Spinnaker-lbs-e2e-test'],
+      'securityGroupNames': ['Spinnaker-lbs-EcsTestSecurityGroup-MP5JZ34XZA2L'], # use given name after CFN update
       'type': 'createServerGroup',
       'user': 'integration-tests',
       'targetGroupMappings': [{ 
