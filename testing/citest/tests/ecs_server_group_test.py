@@ -196,16 +196,28 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       'type': 'createServerGroup',
       'user': 'integration-tests',
       'targetGroupMappings': [{ 
-        #'containerName': 'test', # should match containerName in task def artifact
+        'containerName': 'clydeapp', # should match containerName in task def artifact
         'containerPort': 80,
         'targetGroup': self.TEST_TARGET_GROUP 
       }],
-      'placementStrategySequence': []
-      #'iamRole': 'SpinnakerManagedCA', # required to use ECR
-      #'useTaskDefinitionArtifact': 'false',
-      #'taskDefinitionArtifact': {'artifactId': values_expected_artifact },
-      #'taskDefinitionArtifactAccount': 'SPINNAKER_ECS_ARTIFACT_ACCOUNT',
-      #'containerMappings': [{}] # map container name to image
+      'placementStrategySequence': [],
+      'useTaskDefinitionArtifact': 'true',
+      'taskDefinitionArtifactAccount': 'e2e-s3-acct', #'SPINNAKER_ECS_ARTIFACT_ACCOUNT'
+      'taskDefinitionArtifact': {
+        'artifact': {
+          'artifactAccount': 'e2e-s3-acct',
+          'id': '4844bbdd-1a1a-4d53-98c4-5feabcd5fb26',
+          'reference': 's3://stankoa-spinnaker-e2e-ecs-artifacts-yul/clyde-app-td_no_ex_role.json',
+          'type': 's3/object'
+        }
+      },
+      'containerMappings': [{
+        "containerName": "clydeapp",
+        "imageDescription": {
+            "imageId": self.ECR_IMAGE_ID,
+            "imageLabelOrSha": self.ECR_IMAGE_ID
+          }
+      }]
     }]
 
     payload = self.agent.make_json_payload_from_kwargs(
