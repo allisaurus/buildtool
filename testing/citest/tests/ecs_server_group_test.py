@@ -125,7 +125,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     self.TEST_REGION = "ca-central-1" # self.bindings['TEST_AWS_REGION']
     self.TEST_TARGET_GROUP = 'Spinnaker-lbs-tg'
     self.ECR_ACCOUNT_NAME = "e2e-ecr-repo"
-    self.ECR_URI = '451685053503.dkr.ecr.ca-central-1.amazonaws.com'
+    self.ECR_URI = '[ACCOUNT_ID].dkr.ecr.ca-central-1.amazonaws.com'
 
     self.ECR_REGISTRY = "https://" + self.ECR_URI
     self.ECR_REPOSITORY = "https://" + self.ECR_URI + "/spinnaker-deployment-images"
@@ -207,7 +207,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
         'artifact': {
           'artifactAccount': 'e2e-s3-acct',
           'id': '4844bbdd-1a1a-4d53-98c4-5feabcd5fb26',
-          'reference': 's3://stankoa-spinnaker-e2e-ecs-artifacts-yul/clyde-app-td_no_ex_role.json',
+          'reference': 's3://[USER_NAME]-spinnaker-e2e-ecs-artifacts-yul/clyde-app-td_no_ex_role.json',
           'type': 's3/object'
         }
       },
