@@ -160,8 +160,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
 
 
   def create_server_group(self):
-    # TODO: can we create SG with in-line artifact,
-    # or do we need to save a pipeline w/ an expected artifact?
+    # Creates an ECS server group
 
     job = [{
       'account': self.ECS_TEST_ACCT,
