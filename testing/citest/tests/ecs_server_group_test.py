@@ -51,7 +51,10 @@ $env:PYTHONPATH = ".;spinnaker_testing"; python tests/ecs_server_group_test.py `
 """
 
 # Standard python modules.
-import sys, os
+import sys
+import os
+import random
+import string
 
 # citest modules.
 import citest.aws_testing as aws
@@ -111,6 +114,8 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
 
     aws_observer = self.aws_observer # TODO: specific additional permissions for profile
     self.ecs_client = aws_observer.make_boto_client('ecs')
+    self.s3_resource = sk.S3FileUploadAgent('spinTest') #TODO use env binding
+    self.task_def_factory = sk.EcsTaskDefinitionFactory(self)
 
     # We'll call out the app name because it is widely used
     # because it scopes the context of our activities.
@@ -119,11 +124,12 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     self.TEST_STACK = bindings['TEST_STACK']
     self.SERVER_GROUP_NAME = self.TEST_APP + '-' + self.TEST_STACK + '-v000'
     self.ECS_CLUSTER = "spinnaker-deployment-cluster"
+    self.TASK_DEF_ARTIFACT_ACCOUNT = "e2e-s3-acct"
     
     # test values. TODO: configure accounts w/ Halyard
     self.ECS_TEST_ACCT = "ecs-e2e-test-acct"  # self.bindings['SPINNAKER_ECS_ACCOUNT']
     self.TEST_REGION = "ca-central-1" # self.bindings['TEST_AWS_REGION']
-    self.TEST_TARGET_GROUP = 'Spinnaker-lbs-tg'
+    self.TEST_TARGET_GROUP = 'spinnaker-e2e-2-tg' # old: 'Spinnaker-lbs-tg'
     self.ECR_ACCOUNT_NAME = "e2e-ecr-repo"
     self.ECR_URI = '451685053503.dkr.ecr.ca-central-1.amazonaws.com'
 
@@ -132,10 +138,27 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     self.ECR_IMAGE_ID = self.ECR_URI + "/spinnaker-deployment-images:nyancat"
 
   
-  def __s3_file_expected_artifact(self):
+  def __s3_taskdef_artifact(self, container_name):
     # upload file to s3
-    dir_path = os.path.dirname(os.path.realpath(__file__))
     # TODO: upload JSON file stored in this repo, return artifact values
+
+    contents = self.task_def_factory.get_fargate_task_def_json(container_name)
+    bucket_name = 'stankoa-spinnaker-e2e-ecs-artifacts-yul'
+    file_name = 'clydeapp-generated-' + self.TEST_APP + '.json' #TODO: format string
+
+    self.s3_resource.upload_string(bucket_name, file_name, contents)
+    artifact_s3_path = 's3://' + bucket_name + '/' + file_name
+    id_ = ''.join(random.choice(string.ascii_uppercase + string.digits)
+                  for _ in range(10))
+
+    return {
+      'artifact': {
+          'artifactAccount': self.TASK_DEF_ARTIFACT_ACCOUNT,
+          'id': id_, # e.g., '4844bbdd-1a1a-4d00-56qw-5feabcd5fb26' 
+          'reference': artifact_s3_path,
+          'type': 's3/object'
+        }
+    }
   
   
   def create_app(self):
@@ -163,6 +186,8 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
     # TODO: can we create SG with in-line artifact,
     # or do we need to save a pipeline w/ an expected artifact?
 
+    task_def_artifact = self.__s3_taskdef_artifact("clydeapp")
+
     job = [{
       'account': self.ECS_TEST_ACCT,
       'application': self.TEST_APP,
@@ -170,7 +195,7 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
         self.TEST_REGION : [self.TEST_REGION + 'a', self.TEST_REGION + 'b']
       },
       'capacity': {
-        'min': 1,
+        'min': 0,
         'max': 2,
         'desired': 1
       },
@@ -202,15 +227,8 @@ class EcsServerGroupTestScenario(sk.SpinnakerTestScenario):
       }],
       'placementStrategySequence': [],
       'useTaskDefinitionArtifact': 'true',
-      'taskDefinitionArtifactAccount': 'e2e-s3-acct', #'SPINNAKER_ECS_ARTIFACT_ACCOUNT'
-      'taskDefinitionArtifact': {
-        'artifact': {
-          'artifactAccount': 'e2e-s3-acct',
-          'id': '4844bbdd-1a1a-4d53-98c4-5feabcd5fb26',
-          'reference': 's3://stankoa-spinnaker-e2e-ecs-artifacts-yul/clyde-app-td_no_ex_role.json',
-          'type': 's3/object'
-        }
-      },
+      'taskDefinitionArtifactAccount': self.TASK_DEF_ARTIFACT_ACCOUNT, #'SPINNAKER_ECS_ARTIFACT_ACCOUNT'
+      'taskDefinitionArtifact': task_def_artifact,
       'containerMappings': [{
         "containerName": "clydeapp",
         "imageDescription": {
@@ -415,7 +433,7 @@ def main():
 
   defaults = {
       'TEST_STACK': 'ecstest',
-      'TEST_APP': 'smoketestECS' + EcsServerGroupTestScenario.DEFAULT_TEST_ID
+      'TEST_APP': 'ecsServerGroup' + EcsServerGroupTestScenario.DEFAULT_TEST_ID
   }
 
   return citest.base.TestRunner.main(

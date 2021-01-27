@@ -34,3 +34,6 @@ from .kubernetes_manifests import (
     KubernetesManifestPredicateFactory)
 
 from .pipeline_support import PipelineSupport
+
+from .s3_file_upload_agent import S3FileUploadAgent
+from .ecs_task_definitions import EcsTaskDefinitionFactory
